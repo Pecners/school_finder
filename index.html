@@ -9,44 +9,188 @@
 <style>
 body { margin: 0; padding: 0; }
 #map { position: absolute; top: 0; bottom: 0; width: 100%; }
+.filter-group {
+font: 12px/20px 'Helvetica Neue', Arial, Helvetica, sans-serif;
+font-weight: 600;
+position: absolute;
+top: 10px;
+right: 10px;
+z-index: 1;
+border-radius: 3px;
+width: 120px;
+color: #fff;
+}
+ 
+.filter-group input[type='checkbox']:first-child + label {
+border-radius: 3px 3px 0 0;
+}
+ 
+.filter-group label:last-child {
+border-radius: 0 0 3px 3px;
+border: none;
+}
+ 
+.filter-group input[type='checkbox'] {
+display: none;
+}
+ 
+.filter-group input[type='checkbox'] + label {
+background-color: #3386c0;
+display: block;
+cursor: pointer;
+padding: 10px;
+border-bottom: 1px solid rgba(0, 0, 0, 0.25);
+}
+ 
+.filter-group input[type='checkbox'] + label {
+background-color: #3386c0;
+text-transform: capitalize;
+}
+ 
+.filter-group input[type='checkbox'] + label:hover,
+.filter-group input[type='checkbox']:checked + label {
+background-color: #4ea0da;
+}
+ 
+.filter-group input[type='checkbox']:checked + label:before {
+content: '✔';
+margin-right: 5px;
+}
 </style>
 </head>
 <body>
 <div id="map"></div>
+<nav id="filter-group" class="filter-group"></nav>
+
 <script>
 
 	mapboxgl.accessToken = 'pk.eyJ1IjoiY2l0eWZvcndhcmRjb2xsZWN0aXZlIiwiYSI6ImNsa2E3dTQ0NDA0NGkzbHF0aTltMnZ5bXMifQ.J25oHWufZz5LcDUqSub2Qg';
 
-
+    const filterGroup = document.getElementById('filter-group');
     const map = new mapboxgl.Map({
         container: 'map', // container ID
         // Choose from Mapbox's core styles, or make your own style with Mapbox Studio
-        style: 'mapbox://styles/mapbox/streets-v12', // style URL
+        style: 'mapbox://styles/mapbox/light-v11', // style URL
         center: [-87.96708, 43.06408], // starting position [lng, lat]
         zoom: 10.75 // starting zoom
     });
 
     map.on('load', () => {
-                // Add a data source containing GeoJSON data.
-                map.addSource('mke', {
-                    type: 'geojson',
-                    data: 'data/mke_geo.json'
-                });
+        map.loadImage('./imgs/school.png', (error, image) => {
+            if (error) throw error;
+            map.addImage('school-icon', image, { 'sdf': true});
+        });
+        // Add a data source containing GeoJSON data.
+        map.addSource('mke', {
+            type: 'geojson',
+            data: 'data/mke_geo.json'
+        });
 
-                map.addLayer({
-                    'id': 'mke-polygon',
-                    'type': 'fill',
-                    'source': 'mke',
-                    'layout': {},
-                    'paint': {
-                        'fill-color': '#0080ff', // blue color fill
-                        'fill-opacity': 0.5
-                    }
+        map.addSource('wi-schools', {
+            type: 'geojson',
+            data: 'data/schools_geo.json'
+        });
 
-                });
+        map.addLayer({
+            'id': 'mke-polygon',
+            'type': 'line',
+            'source': 'mke',
+            'layout': {},
+            'paint': {
+                'line-color': '#0080ff', // blue color fill
+            }
+
+        });
+
+        map.addLayer({
+            id: 'wi-schools',
+            type: 'circle',
+            source: 'wi-schools',
+            layout: {},
+            paint: {
+                'circle-stroke-color': '#000000',
+                'circle-stroke-width': 1,
+                'circle-color': [
+                    'match',
+                    ['get', 'overall_rating'],
+                    'Significantly Exceeds Expectations',
+                    '#006228',
+                    'Exceeds Expectations',
+                    '#85BC47',
+                    'Meets Expectations',
+                    '#FEFDBE',
+                    'Meets Few Expectations',
+                    '#EB9C00',
+                    'Fails to Meet Expectations',
+                    '#A51122',
+                    'NR-DATA',
+                    '#B3B3B3',
+                    '#ffffff'
+                ],
+            }
+        });
+
+        // this function will be called whenever a checkbox is toggled
+        const updateLayerFilter = () => {
+            // get an array of icon names that corresponds to the currently checked checkboxes
+            const checkedSymbols = [...document.getElementsByTagName('input')]
+                .filter((el) => el.checked)
+                .map((el) => el.id);
+        
+            // use an 'in' expression to filter the layer
+            map.setFilter('wi-schools', ['in', 'overall_rating', ...checkedSymbols]);
+        };
+
+        map.on('click', 'wi-schools', (e) => {
+            const coordinates = e.features[0].geometry.coordinates.slice();
+            const school = e.features[0].properties.school_name;
+            const rating = e.features[0].properties.overall_rating;
+
+            console.log(school);
+
+            new mapboxgl.Popup()
+                .setLngLat(coordinates)
+                .setHTML('<h2>'+school+'</h2><br><span>'+rating+'</span>')
+                .addTo(map)
+        });
+
+        const ratings = [
+            'Significantly Exceeds Expectations',
+            'Exceeds Expectations',
+            'Meets Expectations',
+            'Meets Few Expectations',
+            'Fails to Meet Expectations',
+            'NR-DATA',
+        ];
+
+        for (const rating of ratings) {
+            const input = document.createElement('input');
+            input.type = 'checkbox';
+            input.id = rating;
+            input.checked = true;
+            filterGroup.appendChild(input);
+ 
+            const label = document.createElement('label');
+            label.setAttribute('for', rating);
+            label.textContent = rating;
+            filterGroup.appendChild(label);
+ 
+            // When any checkbox changes, update the filter.
+            input.addEventListener('change', updateLayerFilter);
+        }
+ 
+        // Change the cursor to a pointer when the mouse is over the places layer.
+        map.on('mouseenter', 'wi-schools', () => {
+            map.getCanvas().style.cursor = 'pointer';
+        });
+
+// Change it back to a pointer when it leaves.
+        map.on('mouseleave', 'wi-schools', () => {
+            map.getCanvas().style.cursor = '';
+        });
 
 
-            });
+    });
     
 </script>
 
